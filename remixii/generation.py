@@ -51,6 +51,7 @@ class AceStepAdapter:
             "bpm": str(bpm),
             "audio_duration": str(round(duration, 2)),
             "audio_format": "wav",
+            "batch_size": "1",
             "model": self.MODEL_NAME,
         }
         try:
@@ -84,6 +85,7 @@ class AceStepAdapter:
                     "submitted_prompt": caption,
                     "audio_duration": round(duration, 2),
                     "audio_format": "wav",
+                    "batch_size": 1,
                 },
             }
         except requests.RequestException as exc:

@@ -1,7 +1,9 @@
 param(
     [string]$AceStepHome,
     [string]$AppPath,
+    [ValidateSet("float16", "float32")][string]$RocmDtype = "float16",
     [switch]$NoBrowser,
+    [switch]$UseSource,
     [switch]$VerifyOnly
 )
 
@@ -12,6 +14,7 @@ if (-not $AceStepHome) {
 }
 $ApiUrl = "http://127.0.0.1:8001"
 $StartedApi = $null
+$KeepApiRunning = $false
 
 function Test-AceStepApi {
     try {
@@ -40,16 +43,16 @@ try {
         $StandardError = Join-Path $LogRoot "server-error.log"
         Write-Host "Starting local ACE-Step. First launch may download about 10 GB of models."
         Write-Host "Server logs: $LogRoot"
-        # These match the official ROCm launcher, with the RX 7600 override from
-        # ACE-Step's GPU guide. The upstream batch file hardcodes gfx1100.
         $env:HSA_OVERRIDE_GFX_VERSION = "11.0.2"
         $env:ACESTEP_LM_BACKEND = "pt"
         $env:TORCH_COMPILE_BACKEND = "eager"
         $env:MIOPEN_FIND_MODE = "FAST"
         $env:TOKENIZERS_PARALLELISM = "false"
-        $env:ACESTEP_INIT_LLM = "auto"
-        # Some Windows shells expose both PATH and Path. Start-Process cannot
-        # redirect output until the inherited environment has one casing.
+        $env:ACESTEP_INIT_LLM = "false"
+        $env:ACESTEP_VAE_ON_CPU = "0"
+        $env:ACESTEP_OFFLOAD_DIT_TO_CPU = "true"
+        $env:ACESTEP_ROCM_DTYPE = $RocmDtype
+        Write-Host "ACE-Step ROCm model dtype: $RocmDtype"
         $SavedPath = $env:Path
         Remove-Item Env:PATH
         $env:Path = $SavedPath
@@ -69,7 +72,6 @@ try {
             throw "ACE-Step did not become ready within 25 minutes. Check $StandardOutput and $StandardError."
         }
     } else {
-        # An existing server may come from a different checkout; do not claim its revision.
         Remove-Item Env:REMIXII_ACE_STEP_REVISION -ErrorAction SilentlyContinue
         Write-Host "Using the ACE-Step API already running at $ApiUrl"
     }
@@ -83,7 +85,30 @@ try {
     $CurrentBundle = Join-Path $RepoRoot "build\final-dist\AI Remix Studio\AI Remix Studio.exe"
     $DefaultBundle = Join-Path $RepoRoot "dist\AI Remix Studio\AI Remix Studio.exe"
     $DevPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-    if ($AppPath) {
+    if ($AppPath -and $UseSource) {
+        throw "Choose either -AppPath or -UseSource."
+    }
+    if ($UseSource) {
+        $SourcePython = $null
+        foreach ($Candidate in @($DevPython, (Join-Path $RepoRoot ".test-venv\Scripts\python.exe"))) {
+            if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) { continue }
+            try {
+                & $Candidate -c "import gradio, imageio_ffmpeg, remixii" 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    $SourcePython = $Candidate
+                    break
+                }
+            } catch {
+                # PowerShell can turn a failed native executable's stderr into
+                # a terminating error when ErrorActionPreference is Stop.
+                continue
+            }
+        }
+        if (-not $SourcePython) {
+            throw "No working Remixii source environment found. Run .\scripts\run-dev.ps1 to check setup."
+        }
+        & $SourcePython -m remixii.app
+    } elseif ($AppPath) {
         if (-not (Test-Path -LiteralPath $AppPath -PathType Leaf)) {
             throw "Remixii executable not found: $AppPath"
         }
@@ -97,8 +122,18 @@ try {
     } else {
         throw "Remixii is not built or installed. Run .\scripts\run-dev.ps1 once first."
     }
-} finally {
+
+    # The bundled EXE may hand off to a child server and exit while its UI
+    # remains open. Do not tie the API lifetime to this EXE process.
+    $KeepApiRunning = $true
     if ($StartedApi -and -not $StartedApi.HasExited) {
+        Write-Host "ACE-Step remains available at $ApiUrl (PID $($StartedApi.Id))."
+        Write-Host "After finishing, stop this process with: Stop-Process -Id $($StartedApi.Id)"
+    }
+} finally {
+    # Preserve existing cleanup for startup failures and the -VerifyOnly check.
+    # An API that was running before this script is never stopped here.
+    if ($StartedApi -and -not $StartedApi.HasExited -and -not $KeepApiRunning) {
         & taskkill.exe /PID $StartedApi.Id /T /F | Out-Null
     }
 }

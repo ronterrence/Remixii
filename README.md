@@ -26,6 +26,12 @@ py -3.11 -m venv .venv
 
 The interface opens at `http://127.0.0.1:7860`.
 
+If an old `.venv` points to a Python installation that has been removed, it may report that `pip` or `gradio` is missing. The development launcher checks for a working environment and can use the prepared `.test-venv` without changing the old folder:
+
+```powershell
+.\scripts\run-dev.ps1
+```
+
 ## Local ACE-Step creator setup
 
 Generation uses only the official [ACE-Step 1.5 repository](https://github.com/ACE-Step/ACE-Step-1.5). The model is optional: project opening and playback never start ACE-Step or access the network.

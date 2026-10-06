@@ -62,6 +62,7 @@ def test_cover_request_records_local_model_provenance(tmp_path: Path, monkeypatc
     assert submitted["bpm"] == "174"
     assert submitted["audio_cover_strength"] == "0.45"
     assert submitted["audio_duration"] == "12.5"
+    assert submitted["batch_size"] == "1"
     assert submitted["lyrics"] == "[Instrumental]"
     assert "drum & bass" in submitted["prompt"].lower()
     assert "dark rolling bassline" in submitted["prompt"]
@@ -71,6 +72,7 @@ def test_cover_request_records_local_model_provenance(tmp_path: Path, monkeypatc
     assert details["provider_url"] == "https://github.com/ACE-Step/ACE-Step-1.5"
     assert details["parameters"]["style"] == "Drum & Bass"
     assert details["parameters"]["audio_duration"] == 12.5
+    assert details["parameters"]["batch_size"] == 1
 
 
 def test_rejects_remote_result_url(tmp_path: Path, monkeypatch) -> None:
