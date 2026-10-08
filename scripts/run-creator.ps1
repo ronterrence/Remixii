@@ -50,7 +50,7 @@ try {
         $env:TOKENIZERS_PARALLELISM = "false"
         $env:ACESTEP_INIT_LLM = "false"
         $env:ACESTEP_VAE_ON_CPU = "0"
-        $env:ACESTEP_OFFLOAD_DIT_TO_CPU = "true"
+        $env:ACESTEP_OFFLOAD_DIT_TO_CPU = "false"
         $env:ACESTEP_ROCM_DTYPE = $RocmDtype
         Write-Host "ACE-Step ROCm model dtype: $RocmDtype"
         $SavedPath = $env:Path
