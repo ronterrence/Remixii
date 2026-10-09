@@ -39,7 +39,12 @@ class AceStepAdapter:
         output: str | Path,
         duration: float = 30,
         cover_strength: float = 0.45,
+        seed: int = 42,
     ) -> dict[str, Any]:
+        if not 0 <= float(cover_strength) <= 1:
+            raise ValueError("Cover strength must be between 0 and 1.")
+        if not 0 <= int(seed) <= 2_147_483_647:
+            raise ValueError("Seed must be an integer from 0 to 2147483647.")
         caption = f"Instrumental {genre.lower()} remix, {bpm} BPM, no singing, no speech, strong groove"
         if prompt.strip():
             caption = f"{caption}. {prompt.strip()}"
@@ -49,9 +54,11 @@ class AceStepAdapter:
             "task_type": "cover",
             "audio_cover_strength": str(cover_strength),
             "bpm": str(bpm),
-            "audio_duration": str(round(duration, 2)),
+            "audio_duration": f"{round(duration, 2):g}",
             "audio_format": "wav",
             "batch_size": "1",
+            "use_random_seed": "false",
+            "seed": str(int(seed)),
             "model": self.MODEL_NAME,
         }
         try:
@@ -68,15 +75,20 @@ class AceStepAdapter:
                 raise GenerationError(envelope.get("error") or "ACE-Step rejected the task.")
             task_id = envelope["data"]["task_id"]
             result = self._wait_for_result(task_id)
+            if not result.get("file"):
+                raise GenerationError(f"ACE-Step task {task_id} completed without a downloadable audio file.")
             self._download(result["file"], output)
             return {
                 "provider": "ACE-Step local HTTP API",
                 "provider_url": self.REPOSITORY_URL,
                 "model_name": result.get("dit_model") or self.MODEL_NAME,
                 "model_revision": self.revision or result.get("generation_info") or "unknown",
-                "seed": result.get("seed_value") or None,
+                "task_id": task_id,
+                "seed": int(seed),
+                "reported_seed": result.get("seed_value"),
                 "environment": result.get("env") or "local creator computer",
                 "parameters": {
+                    "request_fields": dict(fields),
                     "task_type": "cover",
                     "audio_cover_strength": cover_strength,
                     "bpm": bpm,
@@ -86,6 +98,9 @@ class AceStepAdapter:
                     "audio_duration": round(duration, 2),
                     "audio_format": "wav",
                     "batch_size": 1,
+                    "use_random_seed": False,
+                    "seed": int(seed),
+                    "source_audio": Path(source_audio).name,
                 },
             }
         except requests.RequestException as exc:
@@ -104,7 +119,8 @@ class AceStepAdapter:
             response.raise_for_status()
             task = response.json()["data"][0]
             if task["status"] == 2:
-                raise GenerationError("ACE-Step could not generate this candidate.")
+                detail = task.get("error") or task.get("message") or "ACE-Step could not generate this candidate."
+                raise GenerationError(f"ACE-Step task {task_id} failed: {detail}")
             if task["status"] == 1:
                 results = json.loads(task["result"])
                 if not results:

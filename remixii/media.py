@@ -68,8 +68,8 @@ def extract_audio(source: str | Path, output: str | Path) -> Path:
 
 
 def trim_audio(source: str | Path, output: str | Path, start: float, duration: float) -> Path:
-    if start < 0 or not 10 <= duration <= 30:
-        raise MediaError("Choose an excerpt between 10 and 30 seconds.")
+    if start < 0 or not (10 <= duration <= 30 or abs(duration - 180) < 0.01):
+        raise MediaError("Choose a 10–30 second short clip or a 180-second full-length excerpt.")
     available = probe_duration(source)
     if start + duration > available + 0.05:
         raise MediaError("The selected excerpt extends beyond the end of the media.")
@@ -86,7 +86,7 @@ def trim_audio(source: str | Path, output: str | Path, start: float, duration: f
     return destination
 
 
-def normalize_candidate(source: str | Path, output: str | Path, max_duration: float = 30) -> Path:
+def normalize_candidate(source: str | Path, output: str | Path, max_duration: float = 180) -> Path:
     duration = probe_duration(source)
     destination = Path(output)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +113,35 @@ def copy_as_basic_arrangement(source: str | Path, output: str | Path) -> Path:
             "-ac", "2", "-ar", "44100", "-c:a", "pcm_s16le", str(destination),
         ],
         label="Basic arrangement",
+    )
+    return destination
+
+
+def mix_source_and_backing(
+    source: str | Path,
+    backing: str | Path,
+    output: str | Path,
+    *,
+    source_gain_db: float,
+    backing_gain_db: float,
+) -> Path:
+    """Render the excerpt and generated backing as separately adjustable layers."""
+    for name, gain in (("Source", source_gain_db), ("Backing", backing_gain_db)):
+        if not -30 <= float(gain) <= 6:
+            raise MediaError(f"{name} level must be between -30 and +6 dB.")
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    filters = (
+        f"[0:a]volume={float(source_gain_db):.2f}dB[src];"
+        f"[1:a]volume={float(backing_gain_db):.2f}dB[back];"
+        "[src][back]amix=inputs=2:duration=first:normalize=0,"
+        "alimiter=limit=0.95[out]"
+    )
+    _run(
+        [ffmpeg_path(), "-y", "-i", str(source), "-i", str(backing),
+         "-filter_complex", filters, "-map", "[out]", "-ac", "2", "-ar", "44100",
+         "-c:a", "pcm_s16le", str(destination)],
+        label="Source-preserving mix",
     )
     return destination
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import wave
 import zipfile
 from pathlib import Path
@@ -20,7 +21,7 @@ def write_silence(path: Path, seconds: int = 10) -> None:
         audio.writeframes(b"\0\0" * 8000 * seconds)
 
 
-def manifest_for(source: Path, mix: Path, genre: str = "Techno") -> dict:
+def manifest_for(source: Path, mix: Path, genre: str = "Techno", seconds: int = 10) -> dict:
     return new_manifest(
         title="Test Remix",
         creator="Test Creator",
@@ -31,14 +32,14 @@ def manifest_for(source: Path, mix: Path, genre: str = "Techno") -> dict:
         permission_status="authorized",
         permission_evidence="class recording consent",
         excerpt_start=0,
-        excerpt_end=10,
+        excerpt_end=seconds,
         genre=genre,
         bpm=128,
         vocal_treatment="instrumental",
         prompt="instrumental techno",
         model={"provider": "test", "model_name": "fixture", "model_revision": "1"},
-        source_media=media_record(source, "media/source-excerpt.wav", 10),
-        mix_media=media_record(mix, "media/selected-mix.wav", 10),
+        source_media=media_record(source, "media/source-excerpt.wav", seconds),
+        mix_media=media_record(mix, "media/selected-mix.wav", seconds),
     )
 
 
@@ -73,6 +74,25 @@ def test_custom_style_project_round_trip(tmp_path: Path) -> None:
 
     opened, _ = import_project(project, tmp_path / "custom-opened")
     assert opened["transformation"]["genre"] == "Melodic industrial electro"
+
+
+def test_180_second_project_round_trip(tmp_path: Path) -> None:
+    source, mix = tmp_path / "source.wav", tmp_path / "mix.wav"
+    frames = random.Random(42).randbytes(8000 * 2 * 180)
+    for path in (source, mix):
+        with wave.open(str(path), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(8000)
+            audio.writeframes(frames)
+    manifest = manifest_for(source, mix, seconds=180)
+    project = export_project(
+        tmp_path / "full.remix", manifest,
+        {"media/source-excerpt.wav": source, "media/selected-mix.wav": mix},
+    )
+    opened, extracted = import_project(project, tmp_path / "full-opened")
+    assert opened["source"]["excerpt"]["end_seconds"] == 180
+    assert (extracted / "media" / "source-excerpt.wav").stat().st_size == source.stat().st_size
 
 
 def test_rejects_hash_mismatch(tmp_path: Path) -> None:

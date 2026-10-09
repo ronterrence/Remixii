@@ -50,10 +50,7 @@ def export_project(
         target = target.with_suffix(".remix")
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    expected = {
-        manifest["media"]["source_excerpt"]["filename"],
-        manifest["media"]["selected_mix"]["filename"],
-    }
+    expected = {item["filename"] for item in manifest["media"].values()}
     if set(media_files) != expected:
         raise PackageError("Export media does not match the manifest.")
 
