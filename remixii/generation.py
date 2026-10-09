@@ -67,7 +67,7 @@ class AceStepAdapter:
                     f"{self.base_url}/release_task",
                     data=fields,
                     files={"src_audio": (Path(source_audio).name, stream, "audio/wav")},
-                    timeout=30,
+                    timeout=120 if duration >= 300 else 30,
                 )
             response.raise_for_status()
             envelope = response.json()

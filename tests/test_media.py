@@ -3,6 +3,8 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
+import pytest
+
 from remixii.media import copy_as_basic_arrangement, normalize_candidate, probe_duration, trim_audio
 
 
@@ -28,9 +30,10 @@ def test_trim_and_basic_arrangement(tmp_path: Path) -> None:
     assert 9.9 <= probe_duration(mix) <= 10.1
 
 
-def test_full_length_candidate_is_not_cut_to_30_seconds(tmp_path: Path) -> None:
+@pytest.mark.parametrize("seconds", [180, 300])
+def test_full_length_candidate_is_not_cut_to_30_seconds(tmp_path: Path, seconds: int) -> None:
     source = tmp_path / "source.wav"
     candidate = tmp_path / "candidate.wav"
-    write_silence(source, seconds=180)
+    write_silence(source, seconds=seconds)
     normalize_candidate(source, candidate)
-    assert 179.9 <= probe_duration(candidate) <= 180.1
+    assert probe_duration(candidate) == pytest.approx(seconds, abs=0.1)

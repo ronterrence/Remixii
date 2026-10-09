@@ -96,36 +96,39 @@ def test_rejects_remote_result_url(tmp_path: Path, monkeypatch) -> None:
         )
 
 
-def test_full_length_cover_posts_entire_180_second_file(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("seconds", [180, 300])
+def test_full_length_cover_posts_entire_audio_file(tmp_path: Path, monkeypatch, seconds: int) -> None:
     source = tmp_path / "full-source.wav"
     with wave.open(str(source), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(8000)
-        audio.writeframes(b"\0\0" * 8000 * 180)
+        audio.writeframes(b"\0\0" * 8000 * seconds)
     captured = {}
 
     def fake_post(url: str, **kwargs):
         if url.endswith("/release_task"):
             captured.update(kwargs["data"])
+            captured["request_timeout"] = kwargs["timeout"]
             name, stream, media_type = kwargs["files"]["src_audio"]
             captured["filename"] = name
             captured["audio_bytes"] = len(stream.read())
             captured["media_type"] = media_type
-            return FakeResponse({"code": 200, "data": {"task_id": "full-180"}})
+            return FakeResponse({"code": 200, "data": {"task_id": f"full-{seconds}"}})
         return FakeResponse({"data": [{"status": 1, "result": json.dumps([{"file": "/result.wav"}])}]})
 
     monkeypatch.setattr("remixii.generation.requests.post", fake_post)
     monkeypatch.setattr("remixii.generation.requests.get", lambda *args, **kwargs: FakeResponse(content=b"generated"))
     result = AceStepAdapter("http://127.0.0.1:8001").generate(
         source, genre="Techno", bpm=128, prompt="continuous groove",
-        output=tmp_path / "result.wav", duration=180, seed=42,
+        output=tmp_path / "result.wav", duration=seconds, seed=42,
     )
     assert captured["task_type"] == "cover"
-    assert captured["audio_duration"] == "180"
+    assert captured["audio_duration"] == str(seconds)
     assert captured["batch_size"] == "1"
     assert captured["seed"] == "42"
     assert captured["filename"] == source.name
     assert captured["media_type"] == "audio/wav"
     assert captured["audio_bytes"] == source.stat().st_size
-    assert result["task_id"] == "full-180"
+    assert captured["request_timeout"] == (120 if seconds == 300 else 30)
+    assert result["task_id"] == f"full-{seconds}"

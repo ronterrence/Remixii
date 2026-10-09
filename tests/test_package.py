@@ -76,22 +76,23 @@ def test_custom_style_project_round_trip(tmp_path: Path) -> None:
     assert opened["transformation"]["genre"] == "Melodic industrial electro"
 
 
-def test_180_second_project_round_trip(tmp_path: Path) -> None:
+@pytest.mark.parametrize("seconds", [180, 300])
+def test_full_length_project_round_trip(tmp_path: Path, seconds: int) -> None:
     source, mix = tmp_path / "source.wav", tmp_path / "mix.wav"
-    frames = random.Random(42).randbytes(8000 * 2 * 180)
+    frames = random.Random(42).randbytes(8000 * 2 * seconds)
     for path in (source, mix):
         with wave.open(str(path), "wb") as audio:
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(8000)
             audio.writeframes(frames)
-    manifest = manifest_for(source, mix, seconds=180)
+    manifest = manifest_for(source, mix, seconds=seconds)
     project = export_project(
         tmp_path / "full.remix", manifest,
         {"media/source-excerpt.wav": source, "media/selected-mix.wav": mix},
     )
     opened, extracted = import_project(project, tmp_path / "full-opened")
-    assert opened["source"]["excerpt"]["end_seconds"] == 180
+    assert opened["source"]["excerpt"]["end_seconds"] == seconds
     assert (extracted / "media" / "source-excerpt.wav").stat().st_size == source.stat().st_size
 
 

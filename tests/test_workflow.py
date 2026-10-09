@@ -10,6 +10,7 @@ import pytest
 from remixii.app import (
     FULL_LENGTH_WARNING,
     FULL_MODE,
+    FIVE_MINUTE_MODE,
     STYLE_PRESETS,
     _credits_markdown,
     _effective_style,
@@ -48,29 +49,30 @@ def test_create_ui_builds_with_cover_and_layer_controls() -> None:
     assert "two-minute" in FULL_LENGTH_WARNING
 
 
-def test_full_length_excerpt_preview_and_generation_file(tmp_path: Path, monkeypatch) -> None:
-    source = tmp_path / "three-minutes.wav"
+@pytest.mark.parametrize("mode, seconds", [(FULL_MODE, 180), (FIVE_MINUTE_MODE, 300)])
+def test_full_length_excerpt_preview_and_generation_file(tmp_path: Path, monkeypatch, mode: str, seconds: int) -> None:
+    source = tmp_path / "full-source.wav"
     with wave.open(str(source), "wb") as audio:
         audio.setnchannels(1)
         audio.setsampwidth(2)
         audio.setframerate(8000)
-        audio.writeframes(b"\0\0" * 8000 * 185)
+        audio.writeframes(b"\0\0" * 8000 * (seconds + 5))
 
-    state, _, start_control, duration_control, _, _, _ = load_source(str(source), None, FULL_MODE)
-    assert duration_control["value"] == 180
+    state, _, start_control, duration_control, _, _, _ = load_source(str(source), None, mode)
+    assert duration_control["value"] == seconds
     assert duration_control["interactive"] is False
     assert start_control["maximum"] == pytest.approx(5, abs=0.1)
-    _, _, full_warning, _ = _excerpt_controls(state, FULL_MODE)
+    _, _, full_warning, _ = _excerpt_controls(state, mode)
     assert full_warning["visible"] is True
     _, short_control, warning, _ = _excerpt_controls(state, "Short clip (10–30 seconds)")
     assert short_control["maximum"] == 30
     assert warning["visible"] is False
 
-    state, preview, _, _, message = make_excerpt(state, 2, 180, FULL_MODE)
+    state, preview, _, _, message = make_excerpt(state, 2, seconds, mode)
     assert "ready" in message
     assert preview == state["excerpt"]
-    assert probe_duration(preview) == pytest.approx(180, abs=0.05)
-    assert Path(preview).stat().st_size > 30_000_000
+    assert probe_duration(preview) == pytest.approx(seconds, abs=0.05)
+    assert Path(preview).stat().st_size > seconds * 150_000
 
     _, wrong_preview, _, wrong_status = generate_candidate(
         state, "Techno", 128, "Test", "Authorized", 0.45, 42,
@@ -84,19 +86,19 @@ def test_full_length_excerpt_preview_and_generation_file(tmp_path: Path, monkeyp
         submitted.update(kwargs)
         submitted["source_audio"] = excerpt
         shutil.copyfile(excerpt, kwargs["output"])
-        return {"provider": "ACE-Step local HTTP API", "task_id": "full-180", "seed": 42,
+        return {"provider": "ACE-Step local HTTP API", "task_id": f"full-{seconds}", "seed": 42,
                 "parameters": {"submitted_prompt": "Test", "style": "Techno", "bpm": 128}}
 
     monkeypatch.setattr("remixii.app.AceStepAdapter.generate", fake_generate)
     monkeypatch.setattr("remixii.app.normalize_candidate", lambda source, output, **kwargs: shutil.copyfile(source, output))
     state, candidate, details, result = generate_candidate(
-        state, "Techno", 128, "Test", "Authorized", 0.45, 42, "", FULL_MODE,
+        state, "Techno", 128, "Test", "Authorized", 0.45, 42, "", mode,
     )
     assert "ready" in result
     assert submitted["source_audio"] == preview
-    assert submitted["duration"] == pytest.approx(180, abs=0.05)
-    assert probe_duration(candidate) == pytest.approx(180, abs=0.05)
-    assert details[-1]["task_id"] == "full-180"
+    assert submitted["duration"] == pytest.approx(seconds, abs=0.05)
+    assert probe_duration(candidate) == pytest.approx(seconds, abs=0.05)
+    assert details[-1]["task_id"] == f"full-{seconds}"
 
 
 def test_professor_credits_show_provenance() -> None:

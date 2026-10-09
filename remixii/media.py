@@ -68,8 +68,8 @@ def extract_audio(source: str | Path, output: str | Path) -> Path:
 
 
 def trim_audio(source: str | Path, output: str | Path, start: float, duration: float) -> Path:
-    if start < 0 or not (10 <= duration <= 30 or abs(duration - 180) < 0.01):
-        raise MediaError("Choose a 10–30 second short clip or a 180-second full-length excerpt.")
+    if start < 0 or not (10 <= duration <= 30 or any(abs(duration - target) < 0.01 for target in (180, 300, 420))):
+        raise MediaError("Choose a 10–30 second short clip or a 180/300/420-second full-length excerpt.")
     available = probe_duration(source)
     if start + duration > available + 0.05:
         raise MediaError("The selected excerpt extends beyond the end of the media.")
@@ -86,7 +86,7 @@ def trim_audio(source: str | Path, output: str | Path, start: float, duration: f
     return destination
 
 
-def normalize_candidate(source: str | Path, output: str | Path, max_duration: float = 180) -> Path:
+def normalize_candidate(source: str | Path, output: str | Path, max_duration: float = 420) -> Path:
     duration = probe_duration(source)
     destination = Path(output)
     destination.parent.mkdir(parents=True, exist_ok=True)

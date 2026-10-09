@@ -28,9 +28,12 @@ STYLE_PRESETS = ["Techno", "House", "Trance", "Drum & Bass", "Afro House", "Cust
 PRIVATE_ANALYSIS = "Uncleared—private analysis"
 SHORT_MODE = "Short clip (10–30 seconds)"
 FULL_MODE = "Full length (3 minutes)"
+FIVE_MINUTE_MODE = "Full length (5 minutes)"
+SEVEN_MINUTE_MODE = "Full length (7 minutes)"
+LONG_MODE_DURATIONS = {FULL_MODE: 180, FIVE_MINUTE_MODE: 300, SEVEN_MINUTE_MODE: 420}
 FULL_LENGTH_WARNING = (
     "⚠️ Your RX 7600 previously ran out of memory on a two-minute ACE-Step request. "
-    "Raising Remixii's limit to three minutes does not guarantee local generation will succeed."
+    "A successful five-minute cover does not guarantee that a seven-minute local generation will succeed."
 )
 
 
@@ -80,19 +83,20 @@ def _status(message: str, kind: str = "info") -> str:
 
 def _excerpt_controls(state: dict[str, Any] | None, mode: str):
     state = state or {}
-    full = mode == FULL_MODE
+    long_duration = LONG_MODE_DURATIONS.get(mode)
+    full = long_duration is not None
     source_duration = float(state.get("duration", 10))
-    required = 180 if full else 10
+    required = long_duration or 10
     start_maximum = max(0.0, source_duration - required)
     duration_update = (
-        gr.update(minimum=10, maximum=180, value=180, interactive=False)
+        gr.update(minimum=10, maximum=required, value=required, interactive=False)
         if full else gr.update(minimum=10, maximum=min(30.0, max(10.0, source_duration)), value=10, interactive=True)
     )
     notice = gr.update(visible=full)
     message = (
-        "Load a source at least three minutes long for full-length mode."
-        if full and source_duration < 180 else
-        "Full-length excerpt is ready to select. Generation may exceed RX 7600 memory."
+        f"Load a source at least {required // 60} minutes long for this mode."
+        if full and source_duration < required else
+        f"{required // 60}-minute excerpt is ready to select. Generation may exceed RX 7600 memory."
         if full else "Short-clip mode selected."
     )
     return gr.update(maximum=start_maximum, value=0), duration_update, notice, _status(message, "warning" if full else "info")
@@ -113,8 +117,9 @@ def load_source(upload: Any, state: dict[str, Any] | None, mode: str = SHORT_MOD
             state.pop(key, None)
         start_update, duration_update, _, _ = _excerpt_controls(state, mode)
         message = f"Loaded {source.name} ({duration:.1f} seconds)."
-        if mode == FULL_MODE and duration < 180:
-            message += " Full-length mode needs at least 180 seconds."
+        required = LONG_MODE_DURATIONS.get(mode)
+        if required and duration < required:
+            message += f" This mode needs at least {required} seconds."
         return (
             state,
             str(audio),
@@ -122,7 +127,7 @@ def load_source(upload: Any, state: dict[str, Any] | None, mode: str = SHORT_MOD
             duration_update,
             None,
             [],
-            _status(message, "warning" if mode == FULL_MODE and duration < 180 else "ok"),
+            _status(message, "warning" if required and duration < required else "ok"),
         )
     except (RemixiiError, ValueError) as exc:
         return state, None, gr.update(), gr.update(), state.get("candidate"), _candidate_details(state), _status(str(exc), "error")
@@ -133,8 +138,9 @@ def make_excerpt(state: dict[str, Any] | None, start: float, duration: float, mo
     try:
         if "source_full" not in state:
             raise ValueError("Load source media first.")
-        if mode == FULL_MODE and abs(float(duration) - 180) >= 0.01:
-            raise ValueError("Full-length mode requires a 180-second excerpt.")
+        required = LONG_MODE_DURATIONS.get(mode)
+        if required and abs(float(duration) - required) >= 0.01:
+            raise ValueError(f"This full-length mode requires a {required}-second excerpt.")
         if mode == SHORT_MODE and not 10 <= float(duration) <= 30:
             raise ValueError("Short-clip mode requires 10–30 seconds.")
         excerpt = Path(state["root"]) / "source-excerpt.wav"
@@ -241,7 +247,7 @@ def generate_candidate(
         raw = Path(state["root"]) / f"ace-step-result-{run_id}.wav"
         model = AceStepAdapter(
             ace_step_url(), revision=ace_step_revision(),
-            timeout=1200 if duration >= 180 else 300,
+            timeout=2400 if duration >= 420 else 1800 if duration >= 300 else 1200 if duration >= 180 else 300,
         ).generate(
             state["excerpt"], genre=effective_style, bpm=int(bpm), prompt=prompt,
             output=raw, duration=duration, cover_strength=float(cover_strength), seed=int(seed),
@@ -439,7 +445,7 @@ def clear_session(state: dict[str, Any] | None):
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="AI Remix Studio", theme=gr.themes.Soft()) as demo:
         state = gr.State(None)
-        gr.Markdown("# AI Remix Studio\nCreate a short clip or a three-minute cover project, or open one entirely offline.")
+        gr.Markdown("# AI Remix Studio\nCreate a short clip or a full-length cover project, or open one entirely offline.")
         gr.Markdown(
             f"**Local generation model:** [ACE-Step 1.5]({ACE_STEP_REPOSITORY}) · "
             "The model is optional for playback and is never included in a `.remix` file."
@@ -454,7 +460,7 @@ def build_app() -> gr.Blocks:
                         load_button = gr.Button("Load media", variant="primary")
                         full_preview = gr.Audio(label="Imported audio", show_download_button=False, show_share_button=False, editable=False)
                         excerpt_mode = gr.Radio(
-                            [SHORT_MODE, FULL_MODE], value=SHORT_MODE, label="Excerpt mode",
+                            [SHORT_MODE, FULL_MODE, FIVE_MINUTE_MODE, SEVEN_MINUTE_MODE], value=SHORT_MODE, label="Excerpt mode",
                         )
                         full_length_warning = gr.Markdown(FULL_LENGTH_WARNING, visible=False)
                         with gr.Row():

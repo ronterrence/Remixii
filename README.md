@@ -1,10 +1,10 @@
 # AI Remix Studio
 
-AI Remix Studio is a local school-project MVP for turning a 10–30 second excerpt or a continuous 180-second excerpt into a genre remix, recording its provenance, and exporting a portable `.remix` file. Presets include Techno, House, Trance, Drum & Bass, and Afro House, with a custom-style option. A listener can validate and play the project offline without a model or GPU.
+AI Remix Studio is a local school-project MVP for turning a 10–30 second excerpt or a continuous 3- or 5-minute excerpt into a genre remix, recording its provenance, and exporting a portable `.remix` file. Presets include Techno, House, Trance, Drum & Bass, and Afro House, with a custom-style option. A listener can validate and play the project offline without a model or GPU.
 
 ## What works
 
-- Audio or video import through FFmpeg, waveform preview, 10–30 second short-clip trimming, and a fixed 180-second full-length mode.
+- Audio or video import through FFmpeg, waveform preview, 10–30 second short-clip trimming, and fixed 180- and 300-second full-length modes.
 - Separate source, influence, permission, model, and generation records.
 - ACE-Step 1.5 cover generation through its asynchronous HTTP API, with a visible seed and cover strength. Each candidate lists its exact request fields, caption, and task ID.
 - Source-preserving mixes with separately adjustable original and generated backing levels. The `.remix` project stores both layers, their levels, and the rendered mix.
@@ -55,9 +55,11 @@ Start the local API and Remixii together:
 
 The launcher runs the official `acestep.api_server` module with the RX 7600 setting `HSA_OVERRIDE_GFX_VERSION=11.0.2`. The upstream ROCm batch file currently hardcodes `11.0.0` for a different GPU, so the creator launcher sets the documented RX 7600 value without editing ACE-Step. It connects only to `http://127.0.0.1:8001`, records the checked-out ACE-Step Git revision, and stops the API process it started when Remixii closes. There is no remote endpoint or API-key workflow. Manual candidate import and the non-AI fallback remain available without ACE-Step.
 
-The cover request submits `task_type=cover`, `batch_size=1`, the selected source excerpt, the final caption, BPM, cover strength, `use_random_seed=false`, and the displayed seed (default 42). A failed ACE-Step request shows an error; it never selects the non-AI fallback automatically. For a controlled comparison using an original synthetic 10-second excerpt, run:
+The cover request submits `task_type=cover`, `batch_size=1`, the selected source excerpt, the final caption, BPM, cover strength, `use_random_seed=false`, and the displayed seed (default 42). A failed ACE-Step request shows an error; it never selects the non-AI fallback automatically.
 
-For a continuous three-minute cover, select **Full length (3 minutes)** before **Create excerpt**. The source file must contain at least 180 seconds after the selected start. The excerpt player should show about 3:00, and ACE-Step receives that same 180-second WAV with `audio_duration=180` and `batch_size=1`. **The RX 7600 previously ran out of memory on a two-minute ACE-Step request. Raising Remixii's limit does not guarantee that local three-minute generation will succeed.**
+For a continuous cover, select **Full length (3 minutes)** or **Full length (5 minutes)** before **Create excerpt**. The source must contain at least 180 or 300 seconds after the selected start. The player should show about 3:00 or 5:00, and ACE-Step receives that same WAV with matching `audio_duration` and `batch_size=1`. **The RX 7600 previously ran out of memory on a two-minute ACE-Step request. A successful three-minute cover does not guarantee that five-minute local generation will succeed.**
+
+For a controlled comparison using an original synthetic 10-second excerpt, run:
 
 ```powershell
 .venv\Scripts\python.exe -m scripts.controlled_prompt_test

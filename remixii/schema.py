@@ -119,8 +119,8 @@ def validate_manifest(data: Any) -> list[str]:
         start, end = excerpt.get("start_seconds"), excerpt.get("end_seconds")
         if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
             errors.append("source excerpt times must be numeric")
-        elif start < 0 or end <= start or not (10 <= end - start <= 30 or abs(end - start - 180) < 0.01):
-            errors.append("source excerpt must be 10–30 or 180 seconds")
+        elif start < 0 or end <= start or not (10 <= end - start <= 30 or any(abs(end - start - target) < 0.01 for target in (180, 300))):
+            errors.append("source excerpt must be 10–30, 180, or 300 seconds")
 
     transform = data["transformation"]
     genre = transform.get("genre")
